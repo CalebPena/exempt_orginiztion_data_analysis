@@ -4,7 +4,10 @@ from all_codes import all_codes
 
 # Get all files in the data directory
 # Data is CSV files from:
-#  https://www.irs.gov/charities-non-profits/exempt-organizations-business-master-file-extract-eo-bmf
+# https://www.irs.gov/charities-non-profits/exempt-organizations-business-master-file-extract-eo-bmf
+
+# Data documentation is available here:
+# https://www.irs.gov/pub/irs-soi/eo_info.pdf
 
 all_files = glob.glob("data/*.csv")
 
