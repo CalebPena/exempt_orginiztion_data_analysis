@@ -2,12 +2,16 @@ import pandas as pd
 import glob
 from all_codes import all_codes
 
+# Get all files in the data directory
+# Data is CSV files from:
+#  https://www.irs.gov/charities-non-profits/exempt-organizations-business-master-file-extract-eo-bmf
+
 all_files = glob.glob("data/*.csv")
 
 li = []
 
 for filename in all_files:
-    df = pd.read_csv(filename, index_col=None, header=0)
+    df = pd.read_csv(filename, index_col=None, header=0, converters={'ACTIVITY': lambda a: str(a)})
     li.append(df)
 
 df = pd.concat(li, axis=0, ignore_index=True)
@@ -17,37 +21,88 @@ def get_by_code(df, code):
     return df[df['NTEE_CD'] == code]
 
 
-def print_code(df, code):
-    amount = len(get_by_code(df, code))
-    print(f'{code}: {amount}')
+all_budget_codes = tuple(range(0, 10))
 
 
-# prepped_data = []
-# for code in all_codes:
-#     row = [code]
-#     row.append(len(get_by_code(df, code)))
-#     row.append(len(get_by_code(df[df['STATE'] == 'CO'], code)))
-#     prepped_data.append(row)
-# by_code_df = pd.DataFrame(prepped_data, columns=('Code', 'National', 'Colorado'))
-# by_code_df.to_csv('out_data/amount_with_code.csv')
+# Split activity codes into 3 columns
+activity_name = ['ACTIVITY_1', 'ACTIVITY_2', 'ACTIVITY_3']
+df[activity_name] = df['ACTIVITY'].str.extract('(...)(...)(...)', expand=True)
 
-# print(df['ACTIVITY'])
-# print(df['NTEE_CD'])
-# print('total', len(df))
+# Get the number of each activity code and write it to a CSV file
+codes = ('150', '154', '566', '568', '569')
+activity_sum = []
+for code in codes:
+    row = [code]
+    n_df = df[
+        (df['ACTIVITY_1'] == code) |
+        (df['ACTIVITY_2'] == code) |
+        (df['ACTIVITY_3'] == code)
+    ]
+    state_series = n_df['STATE'] == 'CO'
+    s_df = n_df[state_series]
+    row.append(len(n_df))
+    row.append(len(s_df))
 
-# ntee_null = pd.isnull(df['NTEE_CD'])
-# activity_null = df['ACTIVITY'] == 0
-# print('missing both', len(df[ntee_null & activity_null]))
-# print('missing ntee', len(df[ntee_null]))
-# print('missing activity', len(df[activity_null]))
+    for b_code in all_budget_codes:
+        row.append(len(n_df[n_df['INCOME_CD'] == b_code]))
 
-# print('both', len(df[pd.notnull(df['NTEE_CD']) & df['ACTIVITY'] > 0]))
-# print('ntee', len(df[pd.notnull(df['NTEE_CD'])]))
-# print('activity', len(df[df['ACTIVITY'] > 0]))
-# print_code(df, 'J20')
-# print_code(df, 'J21')
-# print_code(df, 'J22')
-# print_code(df, 'J30')
-# print_code(df, 'J32')
-# print_code(df, 'J33')
-# print_code(df, 'J99')
+    for b_code in all_budget_codes:
+        row.append(len(s_df[s_df['INCOME_CD'] == b_code]))
+
+    activity_sum.append(row)
+
+columns = ['Code', 'National', 'Colorado']
+columns += ['National Budget ' + str(code) for code in all_budget_codes]
+columns += ['State Budget ' + str(code) for code in all_budget_codes]
+pd.DataFrame(activity_sum, columns=columns).to_csv('out_data/amount_with_activity_code.csv')
+
+# Write the number of each NTEE code to a CSV file
+prepped_data = []
+for code in all_codes:
+    row = [code]
+    n_code_df = get_by_code(df, code)
+    s_code_df = get_by_code(df[df['STATE'] == 'CO'], code)
+    row.append(len(n_code_df))
+    row.append(len(s_code_df))
+    for b_code in all_budget_codes:
+        row.append(len(n_code_df[n_code_df['INCOME_CD'] == b_code]))
+
+    for b_code in all_budget_codes:
+        row.append(len(s_code_df[s_code_df['INCOME_CD'] == b_code]))
+    prepped_data.append(row)
+
+columns = ['Code', 'National', 'Colorado']
+columns += ['National Budget ' + str(code) for code in all_budget_codes]
+columns += ['State Budget ' + str(code) for code in all_budget_codes]
+by_code_df = pd.DataFrame(prepped_data, columns=columns)
+by_code_df.to_csv('out_data/amount_with_ntee_code.csv')
+
+# Data frame for Colorado
+s_df = df[df['STATE'] == 'CO']
+
+# Write the exempt businesses with NTEE code to a CSV file
+c_df = s_df[s_df['NTEE_CD'].isin(all_codes)]
+c_df.to_csv('out_data/all_ntee_code_co.csv')
+
+# Write the exempt businesses with activity code to a CSV file
+a_df = s_df[
+    s_df['ACTIVITY_1'].isin(codes) |
+    s_df['ACTIVITY_2'].isin(codes) |
+    s_df['ACTIVITY_3'].isin(codes)
+]
+a_df.to_csv('out_data/all_activity_code_co.csv')
+
+# Write businesses with specific NTEE codes nationally to a file
+specific_codes = (
+    'B30',
+    'J20',
+    'J21',
+    'J22',
+    'J30',
+    'J32',
+    'J33',
+    'J99',
+    'P20',
+    'P51',
+)
+df[df['NTEE_CD'].isin(specific_codes)].to_csv('out_data/specific_ntee_national.csv')
