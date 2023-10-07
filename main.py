@@ -1,6 +1,7 @@
 import pandas as pd
 import glob
 from all_codes import all_codes
+from state_code_dict import abbrev_to_us_state
 
 # Get all files in the data directory
 # Data is CSV files from:
@@ -109,3 +110,80 @@ specific_codes = (
     'P51',
 )
 df[df['NTEE_CD'].isin(specific_codes)].to_csv('out_data/specific_ntee_national.csv')
+
+
+class CountCodes:
+    def __init__(self, df, states):
+        self.df = df
+        self.state_dfs = {'_national': self._split_by_income(self.df)}
+
+        for state in states:
+            self.state_dfs[state] = self._split_by_income(self.df[self.df['STATE'] == state])
+
+    def _split_by_income(self, df):
+        incomes = {'all': df}
+
+        incomes['>=500k'] = incomes['all'][incomes['all']['INCOME_CD'] >= 5]
+        incomes['>=1M'] = incomes['all'][incomes['all']['INCOME_CD'] >= 6]
+
+        return incomes
+
+    def num_ntee(self, code, state):
+        s_dfs = self.state_dfs[state]
+        total = len(s_dfs['all'][s_dfs['all']['NTEE_CD'] == code])
+        g_500k = len(s_dfs['>=500k'][s_dfs['>=500k']['NTEE_CD'] == code])
+        g_1m = len(s_dfs['>=1M'][s_dfs['>=1M']['NTEE_CD'] == code])
+        return total, g_500k, g_1m
+
+    def num_activity(self, code, state):
+        s_dfs = self.state_dfs[state]
+        t_df = s_dfs['all'][
+            (s_dfs['all']['ACTIVITY_1'] == code) |
+            (s_dfs['all']['ACTIVITY_2'] == code) |
+            (s_dfs['all']['ACTIVITY_3'] == code)
+        ]
+        g_500k_df = s_dfs['>=500k'][
+            (s_dfs['>=500k']['ACTIVITY_1'] == code) |
+            (s_dfs['>=500k']['ACTIVITY_2'] == code) |
+            (s_dfs['>=500k']['ACTIVITY_3'] == code)
+        ]
+        g_1m_df = s_dfs['>=1M'][
+            (s_dfs['>=1M']['ACTIVITY_1'] == code) |
+            (s_dfs['>=1M']['ACTIVITY_2'] == code) |
+            (s_dfs['>=1M']['ACTIVITY_3'] == code)
+        ]
+        total = len(t_df)
+        g_500k = len(g_500k_df)
+        g_1m = len(g_1m_df)
+        return total, g_500k, g_1m
+
+
+# Get amount of each NTEE code and activity code for every state
+states = df['STATE'].unique()
+
+count_codes = CountCodes(df, states)
+rows = []
+for code in all_codes:
+    print(code)
+    row = [code]
+    row.extend(count_codes.num_ntee(code, '_national'))
+    for state in states:
+        row.extend(count_codes.num_ntee(code, state))
+
+    rows.append(row)
+
+for code in codes:
+    print(code)
+    row = [code]
+    row.extend(count_codes.num_activity(code, '_national'))
+    for state in states:
+        row.extend(count_codes.num_activity(code, state))
+
+    rows.append(row)
+
+columns = ['Code', 'National # of Nonprofits', 'National Income > $500k', 'National Income > $1M']
+for state in states:
+    name = abbrev_to_us_state[state]
+    columns.extend((f'{name} # of Nonprofits', f'{name} Income > $500k', f'{name} Income > $1M'))
+
+pd.DataFrame(rows, columns=columns).to_csv('out_data/all_states_count_ntee.csv')
